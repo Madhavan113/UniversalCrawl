@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/madhavanp/universalcrawl/internal/agentmap"
 	"github.com/madhavanp/universalcrawl/internal/api"
 	"github.com/madhavanp/universalcrawl/internal/browser"
 	"github.com/madhavanp/universalcrawl/internal/crawler"
@@ -94,6 +95,8 @@ func main() {
 		slog.Info("search configured", "endpoint", endpoint)
 	}
 
+	agentMapSvc := agentmap.NewService(webCrawler, orch)
+
 	srv := &http.Server{
 		Addr: fmt.Sprintf(":%d", *port),
 		Handler: api.NewServer(api.Config{APIKey: *apiKey}, api.Deps{
@@ -103,6 +106,7 @@ func main() {
 			Queue:        queue,
 			Extractor:    extractor,
 			Searcher:     searcher,
+			AgentMap:     agentMapSvc,
 		}),
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 60 * time.Second,

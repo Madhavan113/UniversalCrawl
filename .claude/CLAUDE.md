@@ -27,7 +27,7 @@ Chrome is auto-downloaded by Rod on first run. If Chrome cannot be launched, the
 | `-data-dir` | `DATA_DIR` | `./data` | bbolt database path |
 | `-log-level` | `LOG_LEVEL` | `info` | debug/info/warn/error |
 
-Optional: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OLLAMA_BASE_URL` (for /v1/extract), `SEARXNG_ENDPOINT` (for /v1/search).
+Optional: `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `OLLAMA_BASE_URL` (for /v1/extract), `SEARXNG_ENDPOINT` (for /v1/search). Note: `/v1/agent-map` accepts LLM keys per-request, no server env vars needed.
 
 ## Architecture
 
@@ -69,11 +69,15 @@ internal/
   jobs/queue.go                      -- in-process channel-based job queue
   llm/
     provider.go                      -- Provider interface
+    factory.go                       -- per-request provider creation from API key
     anthropic.go                     -- Claude API client
     openai.go                        -- OpenAI client
     ollama.go                        -- Ollama local client
   extract/extract.go                 -- scrape + LLM structured extraction
   search/search.go                   -- SearXNG search + scrape results
+  agentmap/
+    agentmap.go                      -- unified agent-map: crawl + scrape + judge + prompt
+    judge.go                         -- LLM batch judging + site map prompt assembly
   api/
     server.go                        -- chi router, middleware, route registration
     handlers_scrape.go               -- POST /v1/scrape
@@ -81,6 +85,7 @@ internal/
     handlers_map.go                  -- POST /v1/map
     handlers_extract.go              -- POST /v1/extract
     handlers_search.go               -- POST /v1/search
+    handlers_agentmap.go             -- POST /v1/agent-map
     middleware.go                     -- auth, logging, recovery
     response.go                      -- JSON response helpers
 ```
@@ -109,6 +114,7 @@ internal/
 - `POST /v1/map` -- URL discovery (sitemap + links)
 - `POST /v1/extract` -- scrape + LLM extraction (requires LLM key)
 - `POST /v1/search` -- web search + scrape (requires SEARXNG_ENDPOINT)
+- `POST /v1/agent-map` -- unified crawl + LLM judge + site map (bring your own key)
 
 ## Anti-Slop Rules (ENFORCED)
 
@@ -140,28 +146,31 @@ No ORMs, no DI, no config libs. stdlib for logging (slog), JSON, HTTP.
 
 ## Current State
 
-All four build phases are complete:
+All five build phases are complete:
 - Phase 1: Scrape engine (Rod + Fetch + transform pipeline + /v1/scrape)
 - Phase 2: Crawl + Map (crawler, discovery, job queue, /v1/crawl, /v1/map)
 - Phase 3: LLM layer (Anthropic/OpenAI/Ollama + /v1/extract + /v1/search)
 - Phase 4: Browser actions, screenshots, PDF engine
+- Phase 5: Agent API (/v1/agent-map -- unified crawl + LLM judge + site map prompt)
 
-## Skill routing
-
-When the user's request matches an available skill, ALWAYS invoke it using the Skill
-tool as your FIRST action. Do NOT answer directly, do NOT use other tools first.
-The skill has specialized workflows that produce better results than ad-hoc answers.
-
-Key routing rules:
-- Product ideas, "is this worth building", brainstorming → invoke office-hours
-- Bugs, errors, "why is this broken", 500 errors → invoke investigate
-- Ship, deploy, push, create PR → invoke ship
-- QA, test the site, find bugs → invoke qa
-- Code review, check my diff → invoke review
-- Update docs after shipping → invoke document-release
-- Weekly retro → invoke retro
-- Design system, brand → invoke design-consultation
-- Visual audit, design polish → invoke design-review
-- Architecture review → invoke plan-eng-review
-- Save progress, checkpoint, resume → invoke checkpoint
-- Code quality, health check → invoke health
+## Skill routing                                                                     
+                                                                      
+  When the user's request matches an available skill, ALWAYS invoke it using the Skill   
+  tool as your FIRST action. Do NOT answer directly, do NOT use other tools first.       
+  The skill has specialized workflows that produce better results than ad-hoc answers.  
+                                                                                         
+  Key routing rules:
+  - QA, test the site, find bugs, dogfood → invoke gstack                                
+  - Code quality, simplify, clean up → invoke simplify                                   
+  - Run something on a recurring interval, poll status → invoke loop                    
+  - Schedule a recurring remote agent, cron job → invoke schedule                        
+  - Build with Claude API, Anthropic SDK, Agent SDK → invoke claude-api                  
+  - Create slides, presentations → invoke claude-api:pptx                                
+  - Create/edit Word docs → invoke claude-api:docx                                       
+  - Create/edit spreadsheets, CSV → invoke claude-api:xlsx                               
+  - Create/edit PDFs → invoke claude-api:pdf                                             
+  - Build frontend UI, landing pages, dashboards → invoke claude-api:frontend-design    
+  - Build MCP servers → invoke claude-api:mcp-builder                                    
+  - Co-author documentation, specs, proposals → invoke claude-api:doc-coauthoring        
+  - Configure Claude Code settings, hooks → invoke update-config                         
+  - Customize keybindings → invoke keybindings-help      

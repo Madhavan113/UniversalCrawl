@@ -12,9 +12,9 @@ import (
 
 // Pool manages a fixed set of headless Chrome browser instances.
 type Pool struct {
-	mu       sync.Mutex
-	browsers chan *rod.Browser
-	size     int
+	mu        sync.Mutex
+	browsers  chan *rod.Browser
+	size      int
 	launchURL string
 }
 

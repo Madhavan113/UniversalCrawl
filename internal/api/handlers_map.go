@@ -33,6 +33,9 @@ func (h *mapHandler) HandleMap(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	if links == nil {
+		links = []string{}
+	}
 
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"success": true,

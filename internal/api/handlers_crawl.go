@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -58,14 +59,19 @@ func (h *crawlHandler) HandleCrawlStart(w http.ResponseWriter, r *http.Request) 
 	h.queue.Submit(&jobs.Job{
 		ID: jobID,
 		Execute: func(ctx context.Context) error {
-			err := h.crawler.Crawl(ctx, &req, func(result *models.ScrapeResult) {
+			var mu sync.Mutex
+			var completed int
+			err := h.crawler.Crawl(ctx, &req, func(result *models.ScrapeResult, discoveredTotal int) {
 				h.store.AddJobResult(jobID, result)
+				mu.Lock()
+				completed++
 				j, _ := h.store.GetJob(jobID)
 				if j != nil {
-					j.Completed++
-					j.Total, _ = countTotal(h.store, jobID)
+					j.Completed = completed
+					j.Total = discoveredTotal
 					h.store.UpdateJob(j)
 				}
+				mu.Unlock()
 			})
 
 			j, _ := h.store.GetJob(jobID)
@@ -126,14 +132,6 @@ func (h *crawlHandler) HandleCrawlStatus(w http.ResponseWriter, r *http.Request)
 	}
 
 	writeJSON(w, http.StatusOK, resp)
-}
-
-func countTotal(store storage.Store, jobID string) (int, error) {
-	results, _, err := store.GetJobResults(jobID, 0, 100000)
-	if err != nil {
-		return 0, err
-	}
-	return len(results), nil
 }
 
 func generateID(prefix string) string {

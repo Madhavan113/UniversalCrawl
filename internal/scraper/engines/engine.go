@@ -1,6 +1,10 @@
 package engines
 
-import "context"
+import (
+	"context"
+
+	"github.com/madhavanp/universalcrawl/internal/models"
+)
 
 // RawResult holds the raw output from a scrape engine before transformation.
 type RawResult struct {
@@ -8,6 +12,7 @@ type RawResult struct {
 	StatusCode int
 	Headers    map[string]string
 	URL        string
+	Screenshot []byte // PNG screenshot, if requested
 }
 
 // Engine defines the interface for fetching raw HTML from a URL.
@@ -20,8 +25,10 @@ type Engine interface {
 
 // FetchOptions controls engine behavior for a single fetch.
 type FetchOptions struct {
-	WaitFor     int               // milliseconds to wait after page load
-	Timeout     int               // milliseconds before aborting
-	Headers     map[string]string // custom request headers
-	Mobile      bool              // emulate mobile viewport
+	WaitFor    int                    // milliseconds to wait after page load
+	Timeout    int                    // milliseconds before aborting
+	Headers    map[string]string      // custom request headers
+	Mobile     bool                   // emulate mobile viewport
+	Actions    []models.BrowserAction // browser actions to execute after load
+	Screenshot bool                   // capture a screenshot
 }

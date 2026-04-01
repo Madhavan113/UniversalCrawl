@@ -76,6 +76,13 @@ func (e *RodEngine) Fetch(ctx context.Context, url string, opts FetchOptions) (*
 		time.Sleep(time.Duration(opts.WaitFor) * time.Millisecond)
 	}
 
+	// Execute browser actions
+	if len(opts.Actions) > 0 {
+		if err := browser.ExecuteActions(page, opts.Actions); err != nil {
+			return nil, fmt.Errorf("actions: %w", err)
+		}
+	}
+
 	html, err := page.HTML()
 	if err != nil {
 		return nil, fmt.Errorf("get html: %w", err)
@@ -86,10 +93,20 @@ func (e *RodEngine) Fetch(ctx context.Context, url string, opts FetchOptions) (*
 		return nil, fmt.Errorf("get page info: %w", err)
 	}
 
-	return &RawResult{
+	result := &RawResult{
 		HTML:       html,
 		StatusCode: 200,
 		Headers:    nil,
 		URL:        info.URL,
-	}, nil
+	}
+
+	// Capture screenshot if requested
+	if opts.Screenshot {
+		png, err := page.Screenshot(true, nil)
+		if err == nil {
+			result.Screenshot = png
+		}
+	}
+
+	return result, nil
 }

@@ -21,11 +21,22 @@ func NewOrchestrator(engs ...engines.Engine) *Orchestrator {
 
 // Scrape fetches a URL using the engine chain and transforms the result.
 func (o *Orchestrator) Scrape(ctx context.Context, req *models.ScrapeRequest) (*models.ScrapeResult, error) {
+	// Check if screenshot format is requested
+	wantScreenshot := false
+	for _, f := range req.Formats {
+		if f == "screenshot" {
+			wantScreenshot = true
+			break
+		}
+	}
+
 	opts := engines.FetchOptions{
-		WaitFor: req.WaitFor,
-		Timeout: req.Timeout,
-		Headers: req.Headers,
-		Mobile:  req.Mobile,
+		WaitFor:    req.WaitFor,
+		Timeout:    req.Timeout,
+		Headers:    req.Headers,
+		Mobile:     req.Mobile,
+		Actions:    req.Actions,
+		Screenshot: wantScreenshot,
 	}
 
 	var raw *engines.RawResult

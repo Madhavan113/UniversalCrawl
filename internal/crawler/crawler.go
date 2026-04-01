@@ -4,7 +4,6 @@ import (
 	"context"
 	"log/slog"
 	"net/url"
-	"sync"
 	"time"
 
 	"github.com/madhavanp/universalcrawl/internal/models"
@@ -29,14 +28,9 @@ func NewWebCrawler(orch *scraper.Orchestrator, concurrency int) *WebCrawler {
 	}
 }
 
-// CrawlResult holds results from a crawl operation.
-type CrawlResult struct {
-	Results []*models.ScrapeResult
-	Total   int
-}
-
-// Crawl executes a multi-page crawl and returns all results.
-func (c *WebCrawler) Crawl(ctx context.Context, req *models.CrawlRequest, onResult func(*models.ScrapeResult)) error {
+// Crawl executes a multi-page crawl. For each scraped page it calls onResult
+// with the scrape result and the current total number of discovered URLs.
+func (c *WebCrawler) Crawl(ctx context.Context, req *models.CrawlRequest, onResult func(*models.ScrapeResult, int)) error {
 	origin, err := url.Parse(req.URL)
 	if err != nil {
 		return err
@@ -70,8 +64,6 @@ func (c *WebCrawler) Crawl(ctx context.Context, req *models.CrawlRequest, onResu
 	state.Enqueue(req.URL, 0)
 
 	delay := time.Duration(req.Delay) * time.Millisecond
-
-	var wg sync.WaitGroup
 	sem := make(chan struct{}, c.concurrency)
 
 	for {
@@ -80,17 +72,15 @@ func (c *WebCrawler) Crawl(ctx context.Context, req *models.CrawlRequest, onResu
 			break
 		}
 
-		total, _ := state.Stats()
-		if req.Limit > 0 && total > req.Limit {
+		if req.Limit > 0 && state.Stats() > req.Limit {
+			state.Done()
 			break
 		}
 
-		wg.Add(1)
 		sem <- struct{}{}
 
 		go func(pageURL string, depth int) {
-			defer wg.Done()
-			defer func() { <-sem }()
+			defer func() { <-sem; state.Done() }()
 
 			if delay > 0 {
 				time.Sleep(delay)
@@ -106,14 +96,11 @@ func (c *WebCrawler) Crawl(ctx context.Context, req *models.CrawlRequest, onResu
 			result, err := c.orchestrator.Scrape(ctx, scrapeReq)
 			if err != nil {
 				slog.Warn("crawl scrape failed", "url", pageURL, "error", err)
-				state.MarkComplete()
 				return
 			}
 
-			// Discover links from the scraped page
 			links, _ := transform.ExtractLinks(result.HTML, pageURL)
 			if result.HTML == "" && result.Markdown != "" {
-				// If we only got markdown, try extracting from raw HTML
 				links, _ = transform.ExtractLinks(result.RawHTML, pageURL)
 			}
 
@@ -123,14 +110,12 @@ func (c *WebCrawler) Crawl(ctx context.Context, req *models.CrawlRequest, onResu
 				}
 			}
 
-			state.MarkComplete()
 			if onResult != nil {
-				onResult(result)
+				onResult(result, state.Stats())
 			}
 		}(pageURL, depth)
 	}
 
-	wg.Wait()
 	return nil
 }
 

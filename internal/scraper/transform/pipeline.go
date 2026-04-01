@@ -1,6 +1,8 @@
 package transform
 
 import (
+	"encoding/base64"
+
 	"github.com/madhavanp/universalcrawl/internal/models"
 	"github.com/madhavanp/universalcrawl/internal/scraper/engines"
 )
@@ -68,6 +70,11 @@ func Run(raw *engines.RawResult, opts Options) (*models.ScrapeResult, error) {
 			return nil, err
 		}
 		result.Links = links
+	}
+
+	// Screenshot format
+	if formats["screenshot"] && len(raw.Screenshot) > 0 {
+		result.Screenshot = "data:image/png;base64," + base64.StdEncoding.EncodeToString(raw.Screenshot)
 	}
 
 	return result, nil

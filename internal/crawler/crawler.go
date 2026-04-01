@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/madhavanp/universalcrawl/internal/models"
@@ -190,31 +191,5 @@ func filterAndLimit(urls []string, origin *url.URL, req *models.MapRequest) []st
 }
 
 func containsIgnoreCase(s, substr string) bool {
-	return len(s) >= len(substr) &&
-		contains(toLower(s), toLower(substr))
-}
-
-func toLower(s string) string {
-	b := make([]byte, len(s))
-	for i := range s {
-		c := s[i]
-		if c >= 'A' && c <= 'Z' {
-			c += 'a' - 'A'
-		}
-		b[i] = c
-	}
-	return string(b)
-}
-
-func contains(s, substr string) bool {
-	return len(substr) == 0 || indexOf(s, substr) >= 0
-}
-
-func indexOf(s, substr string) int {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return i
-		}
-	}
-	return -1
+	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
 }

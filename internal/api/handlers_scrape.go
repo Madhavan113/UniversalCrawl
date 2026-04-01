@@ -35,7 +35,11 @@ func (h *scrapeHandler) HandleScrape(w http.ResponseWriter, r *http.Request) {
 
 	result, err := h.orchestrator.Scrape(r.Context(), &req)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		status := http.StatusInternalServerError
+		if scrapeErr, ok := err.(*models.ScrapeError); ok && scrapeErr.Retryable {
+			status = http.StatusServiceUnavailable
+		}
+		writeError(w, status, err.Error())
 		return
 	}
 

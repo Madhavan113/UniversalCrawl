@@ -13,14 +13,19 @@ import (
 
 	"github.com/madhavanp/universalcrawl/internal/api"
 	"github.com/madhavanp/universalcrawl/internal/browser"
+	"github.com/madhavanp/universalcrawl/internal/crawler"
+	"github.com/madhavanp/universalcrawl/internal/jobs"
 	"github.com/madhavanp/universalcrawl/internal/scraper"
 	"github.com/madhavanp/universalcrawl/internal/scraper/engines"
+	"github.com/madhavanp/universalcrawl/internal/storage"
 )
 
 func main() {
 	port := flag.Int("port", envInt("PORT", 3000), "API server port")
 	apiKey := flag.String("api-key", os.Getenv("API_KEY"), "Bearer token for API auth")
 	poolSize := flag.Int("pool-size", envInt("BROWSER_POOL_SIZE", 5), "Headless Chrome pool size")
+	workers := flag.Int("workers", envInt("WORKERS", 4), "Background job goroutines")
+	dataDir := flag.String("data-dir", envOr("DATA_DIR", "./data"), "Database directory")
 	logLevel := flag.String("log-level", envOr("LOG_LEVEL", "info"), "Log level (debug, info, warn, error)")
 	flag.Parse()
 
@@ -29,7 +34,16 @@ func main() {
 	slog.Info("starting universalcrawl",
 		"port", *port,
 		"pool_size", *poolSize,
+		"workers", *workers,
 	)
+
+	// Storage
+	store, err := storage.NewBoltStore(*dataDir)
+	if err != nil {
+		slog.Error("failed to open storage", "error", err)
+		os.Exit(1)
+	}
+	defer store.Close()
 
 	// Build engine chain: Rod (headless Chrome) -> Fetch (HTTP fallback)
 	var engs []engines.Engine
@@ -45,9 +59,22 @@ func main() {
 
 	orch := scraper.NewOrchestrator(engs...)
 
+	// Crawler
+	webCrawler := crawler.NewWebCrawler(orch, *workers)
+
+	// Job queue
+	queue := jobs.NewQueue(100)
+	queue.Start(*workers)
+	defer queue.Stop()
+
 	srv := &http.Server{
-		Addr:         fmt.Sprintf(":%d", *port),
-		Handler:      api.NewServer(api.Config{APIKey: *apiKey}, orch),
+		Addr: fmt.Sprintf(":%d", *port),
+		Handler: api.NewServer(api.Config{APIKey: *apiKey}, api.Deps{
+			Orchestrator: orch,
+			Crawler:      webCrawler,
+			Store:        store,
+			Queue:        queue,
+		}),
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 60 * time.Second,
 		IdleTimeout:  120 * time.Second,

@@ -14,9 +14,12 @@ import (
 	"github.com/madhavanp/universalcrawl/internal/api"
 	"github.com/madhavanp/universalcrawl/internal/browser"
 	"github.com/madhavanp/universalcrawl/internal/crawler"
+	"github.com/madhavanp/universalcrawl/internal/extract"
 	"github.com/madhavanp/universalcrawl/internal/jobs"
+	"github.com/madhavanp/universalcrawl/internal/llm"
 	"github.com/madhavanp/universalcrawl/internal/scraper"
 	"github.com/madhavanp/universalcrawl/internal/scraper/engines"
+	"github.com/madhavanp/universalcrawl/internal/search"
 	"github.com/madhavanp/universalcrawl/internal/storage"
 )
 
@@ -67,6 +70,30 @@ func main() {
 	queue.Start(*workers)
 	defer queue.Stop()
 
+	// LLM provider (optional, for extract/search)
+	var llmProvider llm.Provider
+	if key := os.Getenv("ANTHROPIC_API_KEY"); key != "" {
+		llmProvider = llm.NewAnthropicProvider(key)
+		slog.Info("llm provider configured", "provider", "anthropic")
+	} else if key := os.Getenv("OPENAI_API_KEY"); key != "" {
+		llmProvider = llm.NewOpenAIProvider(key)
+		slog.Info("llm provider configured", "provider", "openai")
+	} else if base := os.Getenv("OLLAMA_BASE_URL"); base != "" {
+		llmProvider = llm.NewOllamaProvider(base)
+		slog.Info("llm provider configured", "provider", "ollama")
+	}
+
+	var extractor *extract.Extractor
+	if llmProvider != nil {
+		extractor = extract.NewExtractor(orch, llmProvider)
+	}
+
+	var searcher *search.Searcher
+	if endpoint := os.Getenv("SEARXNG_ENDPOINT"); endpoint != "" {
+		searcher = search.NewSearcher(orch, endpoint)
+		slog.Info("search configured", "endpoint", endpoint)
+	}
+
 	srv := &http.Server{
 		Addr: fmt.Sprintf(":%d", *port),
 		Handler: api.NewServer(api.Config{APIKey: *apiKey}, api.Deps{
@@ -74,6 +101,8 @@ func main() {
 			Crawler:      webCrawler,
 			Store:        store,
 			Queue:        queue,
+			Extractor:    extractor,
+			Searcher:     searcher,
 		}),
 		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 60 * time.Second,

@@ -5,8 +5,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/madhavanp/universalcrawl/internal/crawler"
+	"github.com/madhavanp/universalcrawl/internal/extract"
 	"github.com/madhavanp/universalcrawl/internal/jobs"
 	"github.com/madhavanp/universalcrawl/internal/scraper"
+	"github.com/madhavanp/universalcrawl/internal/search"
 	"github.com/madhavanp/universalcrawl/internal/storage"
 )
 
@@ -21,6 +23,8 @@ type Deps struct {
 	Crawler      *crawler.WebCrawler
 	Store        storage.Store
 	Queue        *jobs.Queue
+	Extractor    *extract.Extractor
+	Searcher     *search.Searcher
 }
 
 // NewServer creates and configures the HTTP router.
@@ -53,6 +57,14 @@ func NewServer(cfg Config, deps Deps) http.Handler {
 	// Map
 	mh := &mapHandler{crawler: deps.Crawler}
 	r.Post("/v1/map", mh.HandleMap)
+
+	// Extract
+	eh := &extractHandler{extractor: deps.Extractor}
+	r.Post("/v1/extract", eh.HandleExtract)
+
+	// Search
+	srch := &searchHandler{searcher: deps.Searcher}
+	r.Post("/v1/search", srch.HandleSearch)
 
 	return r
 }
